@@ -1,0 +1,83 @@
+from machine import Pin, Signal, ADC, Timer
+import time
+import usocket as _socket             #import usocket as _socket              
+import ussl as ssl                    #import ssl module from firmware
+import network                        #import network module from firmware 
+import time                           #import time module from firmware
+import dht
+
+adc = ADC(0)
+led = Pin(16,Pin.OUT)
+led.off()
+#function for identify wifi
+nic = network.WLAN(network.STA_IF)
+nic.active(True)
+if nic.connect('Peacock Network', '224921710313'):
+  print(connected)
+
+API_KEY = "BPS9EWFJJS32LQC6"  
+HOST = "api.thingspeak.com"
+
+
+MAX_HISTORY = 250
+TOTAL_BEATS = 30
+
+def calculate_bpm(beats):
+    # Truncate beats queue to max, then calculate bpm.
+    # Calculate difference in time from the head to the 
+    # tail of the list. Divide the number of beats by 
+    # this duration (in seconds)
+    beats = beats[-TOTAL_BEATS:]
+    beat_time = beats[-1] - beats[0]
+    if beat_time:
+        bpm = (len(beats) / (beat_time)) * 60
+        print("%d bpm" % bpm)
+        if(bpm>120 or bpm<=60):
+          led.on()
+          data = b"api_key="+ API_KEY + "&field2=" + str(bpm) 
+          #+ 
+          #"&field2=" + str(humid) 
+          s = _socket.socket()
+          ai = _socket.getaddrinfo(HOST, 443)        
+          #Connecting to the HOST
+          addr = ai[0][-1]
+          s.connect(addr)
+          s = ssl.wrap_socket(s)
+          s.write("POST /update HTTP/1.0\r\n")
+          s.write("Host: " + HOST + "\r\n")
+          s.write("Content-Length: " + str(len(data)) + "\r\n\r\n")
+          s.write(data)
+          print(s.read(128))
+          
+    
+        else:
+          led.off()
+      
+def detect():
+    # Maintain a log of previous values to 
+    # determine min, max and threshold.
+    history = []
+    beats = []
+    beat = False
+    
+    while True:
+        v = adc.read()
+        history.append(v)
+        # Get the tail, up to MAX_HISTORY length
+        history = history[-MAX_HISTORY:]
+
+        minima, maxima = min(history), max(history)
+
+        threshold_on = (minima + maxima * 3) // 4   # 3/4
+        threshold_off = (minima + maxima) // 2      # 1/2
+
+        if v > threshold_on and beat == False:
+            beat = True
+            beats.append(time.time())
+            beats = beats[-TOTAL_BEATS:]
+            calculate_bpm(beats)
+
+        if v < threshold_off and beat == True:
+            beat = False
+        
+detect()
